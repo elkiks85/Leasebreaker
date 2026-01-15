@@ -1,0 +1,326 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String?
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  contracts     Contract[]
+  actions       Action[]
+  communications Communication[]
+  documents     Document[]
+}
+
+model Contract {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tenant Info
+  tenantName           String
+  tenantRfc            String?
+  tenantRepresentative String?
+  tenantAddress        String?
+
+  // Landlord Info
+  landlordName         String
+  landlordRfc          String
+  landlordRepresentative String?
+  landlordAddress      String
+  landlordPhone        String?
+  landlordEmail        String?
+
+  // Property Info
+  propertyAddress      String
+  propertySize         String?
+  parkingSpots         Int?
+
+  // Financial Info
+  monthlyRent          Decimal   @db.Decimal(12, 2)
+  maintenanceFee       Decimal?  @db.Decimal(12, 2)
+  depositAmount        Decimal   @db.Decimal(12, 2)
+  penaltyMonths        Int       @default(4)
+  moratoryInterestRate Decimal?  @db.Decimal(5, 2)
+  currency             String    @default("MXN")
+
+  // Bank Info
+  bankName             String?
+  bankAccount          String?
+  bankClabe            String?
+
+  // Dates
+  leaseStartDate       DateTime
+  leaseEndDate         DateTime
+  gracePeriodStart     DateTime?
+  gracePeriodEnd       DateTime?
+
+  // Status
+  status               ContractStatus @default(ACTIVE)
+  terminationDate      DateTime?
+  depositRecovered     Decimal?  @db.Decimal(12, 2)
+
+  // Metadata
+  notes                String?   @db.Text
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  actions              Action[]
+  communications       Communication[]
+  documents            Document[]
+  clauses              ContractClause[]
+}
+
+enum ContractStatus {
+  ACTIVE
+  NEGOTIATING
+  TERMINATED
+  LITIGATION
+  RESOLVED
+}
+
+model ContractClause {
+  id            String    @id @default(cuid())
+  contractId    String
+  contract      Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  clauseNumber  String
+  title         String
+  summary       String    @db.Text
+  fullText      String?   @db.Text
+  isLeverage    Boolean   @default(false)
+  legalBasis    String?
+
+  createdAt     DateTime  @default(now())
+}
+
+model PressureTactic {
+  id            String    @id @default(cuid())
+
+  name          String
+  slug          String    @unique
+  category      TacticCategory
+  description   String    @db.Text
+
+  // Agency Info
+  agencyName    String
+  agencyUrl     String?
+  agencyPhone   String?
+  agencyEmail   String?
+  agencyAddress String?
+
+  // Effort & Impact
+  estimatedCost Decimal   @db.Decimal(10, 2)
+  timeToFile    String
+  impactLevel   ImpactLevel
+  potentialFine String?
+
+  // Requirements
+  requiredDocs  String[]
+  legalBasis    String?
+
+  // Template
+  templateText  String?   @db.Text
+
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+
+  actions       Action[]
+}
+
+enum TacticCategory {
+  TAX
+  ADMINISTRATIVE
+  LEGAL
+  COMMUNICATION
+}
+
+enum ImpactLevel {
+  LOW
+  MEDIUM
+  HIGH
+  VERY_HIGH
+  MAXIMUM
+}
+
+model Action {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contractId    String
+  contract      Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  tacticId      String
+  tactic        PressureTactic @relation(fields: [tacticId], references: [id])
+
+  status        ActionStatus @default(PENDING)
+  priority      Priority     @default(MEDIUM)
+
+  // Dates
+  dateCreated   DateTime  @default(now())
+  dateDue       DateTime?
+  dateCompleted DateTime?
+
+  // Details
+  notes         String?   @db.Text
+  result        String?   @db.Text
+  referenceNumber String?
+
+  // Follow-up
+  followUpDate  DateTime?
+  followUpNotes String?   @db.Text
+
+  documents     Document[]
+  reminders     Reminder[]
+
+  updatedAt     DateTime  @updatedAt
+}
+
+enum ActionStatus {
+  PENDING
+  IN_PROGRESS
+  WAITING_RESPONSE
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Communication {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contractId    String
+  contract      Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  type          CommunicationType
+  direction     Direction
+
+  recipient     String?
+  sender        String?
+  subject       String
+  content       String    @db.Text
+
+  // Delivery Info
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  deliveryMethod String?
+  trackingNumber String?
+
+  // Response
+  responseReceived Boolean @default(false)
+  responseDate   DateTime?
+  responseContent String?  @db.Text
+
+  documents     Document[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+enum CommunicationType {
+  EMAIL
+  LETTER
+  CERTIFIED_MAIL
+  PHONE_CALL
+  IN_PERSON
+  LEGAL_NOTICE
+  COMPLAINT
+}
+
+enum Direction {
+  OUTBOUND
+  INBOUND
+}
+
+model Document {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contractId    String?
+  contract      Contract? @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  actionId      String?
+  action        Action?   @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  communicationId String?
+  communication Communication? @relation(fields: [communicationId], references: [id], onDelete: SetNull)
+
+  name          String
+  description   String?
+  fileType      String
+  fileSize      Int
+  filePath      String
+
+  category      DocumentCategory
+
+  createdAt     DateTime  @default(now())
+}
+
+enum DocumentCategory {
+  CONTRACT
+  PAYMENT_RECEIPT
+  INVOICE
+  COMPLAINT_FILING
+  LEGAL_DOCUMENT
+  CORRESPONDENCE
+  EVIDENCE
+  OTHER
+}
+
+model Reminder {
+  id            String    @id @default(cuid())
+  actionId      String
+  action        Action    @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  reminderDate  DateTime
+  message       String
+  isSent        Boolean   @default(false)
+  sentAt        DateTime?
+
+  createdAt     DateTime  @default(now())
+}
+
+model MessageTemplate {
+  id            String    @id @default(cuid())
+
+  name          String
+  slug          String    @unique
+  category      TemplateCategory
+  language      String    @default("es")
+
+  subject       String?
+  content       String    @db.Text
+
+  placeholders  String[]
+
+  isActive      Boolean   @default(true)
+  sortOrder     Int       @default(0)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+enum TemplateCategory {
+  TERMINATION_REQUEST
+  SAT_COMPLAINT
+  PROSOC_COMPLAINT
+  DEMAND_LETTER
+  FOLLOW_UP
+  GENERAL
+}
